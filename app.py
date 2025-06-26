@@ -4,6 +4,7 @@ import dash_cytoscape as cyto
 import json
 import base64
 from mindmap_generator import build_mindmap
+import os
 
 app = dash.Dash(__name__)
 server = app.server
@@ -183,4 +184,5 @@ app.index_string = app.index_string.replace(
 )
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 8050))
+    app.run_server(debug=True, host='0.0.0.0', port=port)
