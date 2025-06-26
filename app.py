@@ -11,13 +11,13 @@ from mindmap_generator import build_mindmap
 app = dash.Dash(__name__)
 server = app.server
 
-# Color styles for POS types
-stylesheet = [
+# Color styles for POS types - default light
+light_stylesheet = [
     {
         'selector': 'node',
         'style': {
             'label': 'data(label)',
-            'color': 'white',
+            'color': 'black',
             'text-valign': 'center',
             'text-halign': 'center',
             'font-size': '12px',
@@ -45,8 +45,8 @@ stylesheet = [
     {
         'selector': 'edge',
         'style': {
-            'line-color': '#bbb',
-            'target-arrow-color': '#bbb',
+            'line-color': '#666',
+            'target-arrow-color': '#666',
             'target-arrow-shape': 'triangle',
             'arrow-scale': 1,
             'curve-style': 'bezier',
@@ -58,7 +58,54 @@ stylesheet = [
     },
 ]
 
-# Layouts for the dropdown
+dark_stylesheet = [
+    {
+        'selector': 'node',
+        'style': {
+            'label': 'data(label)',
+            'color': 'white',
+            'background-color': '#444',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'font-size': '12px',
+            'text-wrap': 'wrap',
+            'width': 'label',
+            'height': 'label'
+        }
+    },
+    {
+        'selector': '.noun',
+        'style': {'background-color': '#2980b9'}
+    },
+    {
+        'selector': '.verb',
+        'style': {'background-color': '#27ae60'}
+    },
+    {
+        'selector': '.adj',
+        'style': {'background-color': '#d35400'}
+    },
+    {
+        'selector': '.root',
+        'style': {'background-color': '#c0392b'}
+    },
+    {
+        'selector': 'edge',
+        'style': {
+            'line-color': '#aaa',
+            'target-arrow-color': '#aaa',
+            'target-arrow-shape': 'triangle',
+            'arrow-scale': 1,
+            'curve-style': 'bezier',
+            'label': 'data(label)',
+            'font-size': '10px',
+            'text-rotation': 'autorotate',
+            'text-margin-y': -10,
+        }
+    },
+]
+
+# Layout options
 layout_options = [
     {'label': 'Breadthfirst', 'value': 'breadthfirst'},
     {'label': 'Circle', 'value': 'circle'},
@@ -76,6 +123,15 @@ app.layout = html.Div([
         value='breadthfirst',
         style={'margin-top': '10px'}
     ),
+    dcc.RadioItems(
+        id='theme-toggle',
+        options=[
+            {'label': '🌞 Light', 'value': 'light'},
+            {'label': '🌚 Dark', 'value': 'dark'}
+        ],
+        value='light',
+        labelStyle={'display': 'inline-block', 'margin-right': '15px'}
+    ),
     html.Div(id='cytoscape-container'),
     dcc.Download(id='download-json'),
     html.Button("Export JSON", id="export-json"),
@@ -91,9 +147,10 @@ app.layout = html.Div([
     Output('cytoscape-container', 'children'),
     Input('generate-btn', 'n_clicks'),
     State('input-text', 'value'),
-    State('layout-selector', 'value')
+    State('layout-selector', 'value'),
+    State('theme-toggle', 'value')
 )
-def update_mindmap(n_clicks, text, layout):
+def update_mindmap(n_clicks, text, layout, theme):
     if not text:
         return html.Div("Please enter some text.")
 
@@ -116,12 +173,14 @@ def update_mindmap(n_clicks, text, layout):
             }
         })
 
+    current_stylesheet = light_stylesheet if theme == 'light' else dark_stylesheet
+
     return cyto.Cytoscape(
         id='cytoscape',
         elements=elements,
         layout={'name': layout},
         style={'width': '100%', 'height': '600px'},
-        stylesheet=stylesheet
+        stylesheet=current_stylesheet
     )
 
 @app.callback(
@@ -141,6 +200,7 @@ def export_json(n_clicks, text):
     prevent_initial_call=True
 )
 def upload_json(contents):
+    import base64
     content_type, content_string = contents.split(',')
     decoded = json.loads(base64.b64decode(content_string).decode('utf-8'))
     G = nx.node_link_graph(decoded)
