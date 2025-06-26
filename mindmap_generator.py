@@ -1,3 +1,5 @@
+# 🔧 mindmap_generator.py
+
 import spacy
 import networkx as nx
 
@@ -12,28 +14,21 @@ def build_mindmap(text):
             if not token.is_alpha or token.is_stop:
                 continue
 
-            token_type = "noun"
-            if token.pos_ == "VERB":
-                token_type = "verb"
-            elif token.pos_ == "ADJ":
-                token_type = "adj"
-            elif token.dep_ == "ROOT":
-                token_type = "root"
+            token_type = get_type(token)
+            G.add_node(token.text, type=token_type, tooltip=token_type)
 
-            G.add_node(token.text, type=token_type)
-
-            # Connect child to head
             if token.head != token and token.head.is_alpha:
-                G.add_node(token.head.text, type=guess_type(token.head))
+                head_type = get_type(token.head)
+                G.add_node(token.head.text, type=head_type, tooltip=head_type)
                 G.add_edge(token.head.text, token.text, label=token.dep_)
 
     return G
 
-def guess_type(token):
-    if token.pos_ == "VERB":
+def get_type(token):
+    if token.dep_ == "ROOT":
+        return "root"
+    elif token.pos_ == "VERB":
         return "verb"
     elif token.pos_ == "ADJ":
         return "adj"
-    elif token.dep_ == "ROOT":
-        return "root"
     return "noun"
