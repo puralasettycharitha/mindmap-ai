@@ -1,44 +1,23 @@
-# app.py
 import dash
 from dash import html, dcc, Input, Output, State
 import dash_cytoscape as cyto
-import spacy
-import networkx as nx
 import dash_daq as daq
 import base64
-import io
-import plotly.io as pio
 from PIL import Image
-
+import io
 from mindmap_generator import build_mindmap
 
-# Load SpaCy model
-nlp = spacy.load("en_core_web_sm")
-
+cyto.load_extra_layouts()
 app = dash.Dash(__name__)
 server = app.server
 
-app.title = "MindMap AI"
-
-# Initial theme
-theme_dark = {
-    'background': '#111111',
-    'text': '#FFFFFF',
-    'node_text': 'white'
-}
-theme_light = {
-    'background': '#FFFFFF',
-    'text': '#000000',
-    'node_text': 'black'
-}
-
+# Theme state
 app.layout = html.Div([
-    dcc.Store(id='theme-store', data='dark'),
-    html.Button("🌙 Switch to Light Mode", id='theme-toggle', n_clicks=0),
-    html.H1("\U0001F9E0 MindMap AI Generator", id='title', style={'textAlign': 'center'}),
-    dcc.Input(id='input-text', type='text', placeholder='Enter your topic or idea', style={'width': '60%'}),
+    daq.ToggleSwitch(id="theme-toggle", label=["🌞 Light", "🌚 Dark"], value=True),
+    html.H1("🧠 MindMap AI Generator", className="title"),
+    dcc.Input(id="user-input", type="text", placeholder="Enter a concept...", className="input-box"),
     dcc.Dropdown(
-        id='layout-style',
+        id='layout-dropdown',
         options=[
             {'label': 'Breadthfirst', 'value': 'breadthfirst'},
             {'label': 'Circle', 'value': 'circle'},
@@ -46,87 +25,56 @@ app.layout = html.Div([
             {'label': 'Cose', 'value': 'cose'}
         ],
         value='breadthfirst',
-        style={'width': '200px'}
+        className="dropdown"
     ),
-    html.Button('Generate Map', id='generate-button'),
-    html.Button('Download PNG', id='download-button'),
-    html.Div(id='download-status'),
+    html.Div([
+        html.Button("Generate Map", id="generate-btn", className="btn"),
+        html.Button("Download PNG", id="download-btn", className="btn")
+    ], className="button-group"),
     cyto.Cytoscape(
-        id='mindmap',
-        layout={},  # Layout will be set by callback
+        id='cytoscape',
+        layout={'name': 'breadthfirst'},
         style={'width': '100%', 'height': '600px'},
-        elements=[],
-        stylesheet=[]
-    )
-], id='main-div')
+        elements=[]
+    ),
+    dcc.Download(id="download-image")
+], id="main-container", className="dark")  # default dark theme
 
 
 @app.callback(
-    Output('mindmap', 'elements'),
-    Output('mindmap', 'stylesheet'),
-    Input('generate-button', 'n_clicks'),
-    State('input-text', 'value'),
-    State('theme-store', 'data')
+    Output('cytoscape', 'elements'),
+    Output('cytoscape', 'layout'),
+    Input('generate-btn', 'n_clicks'),
+    State('user-input', 'value'),
+    State('layout-dropdown', 'value'),
+    prevent_initial_call=True
 )
-def update_mindmap(n_clicks, text, theme):
-    if not text:
-        return [], []
-
-    G = build_mindmap(text)
-
-    elements = []
-    for node in G.nodes:
-        elements.append({"data": {"id": node, "label": node}})
-    for source, target in G.edges:
-        elements.append({"data": {"source": source, "target": target}})
-
-    node_text_color = theme_dark['node_text'] if theme == 'dark' else theme_light['node_text']
-
-    stylesheet = [
-        {
-            'selector': 'node',
-            'style': {
-                'label': 'data(label)',
-                'color': node_text_color,
-                'background-color': '#0074D9',
-                'text-outline-color': '#0074D9',
-                'text-outline-width': 2,
-                'font-size': 16
-            }
-        },
-        {
-            'selector': 'edge',
-            'style': {
-                'line-color': 'gray',
-                'width': 2
-            }
-        }
-    ]
-
-    return elements, stylesheet
+def generate_map(n_clicks, user_input, layout_style):
+    if not user_input:
+        return [], {'name': layout_style}
+    elements = build_mindmap(user_input)
+    return elements, {'name': layout_style}
 
 
 @app.callback(
-    Output('mindmap', 'layout'),
-    Input('layout-style', 'value')
+    Output("main-container", "className"),
+    Input("theme-toggle", "value")
 )
-def update_layout(layout_value):
-    return {'name': layout_value}
+def toggle_theme(dark_mode):
+    return "dark" if dark_mode else "light"
 
 
 @app.callback(
-    Output('main-div', 'style'),
-    Output('title', 'style'),
-    Output('theme-store', 'data'),
-    Output('theme-toggle', 'children'),
-    Input('theme-toggle', 'n_clicks'),
-    State('theme-store', 'data')
+    Output("download-image", "data"),
+    Input("download-btn", "n_clicks"),
+    State("cytoscape", "elements"),
+    prevent_initial_call=True
 )
-def toggle_theme(n_clicks, current):
-    if n_clicks % 2 == 0:
-        return theme_dark, {'color': theme_dark['text'], 'textAlign': 'center'}, 'dark', '🌙 Switch to Light Mode'
-    else:
-        return theme_light, {'color': theme_light['text'], 'textAlign': 'center'}, 'light', '☀️ Switch to Dark Mode'
+def download_as_png(n_clicks, elements):
+    from dash_cytoscape.utils import to_image
+    image_bytes = to_image(elements, format="png")
+    return dcc.send_bytes(image_bytes, "mindmap.png")
+
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8050)
+    app.run_server(debug=False, host="0.0.0.0", port=8080)
