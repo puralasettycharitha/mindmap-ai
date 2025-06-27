@@ -42,7 +42,8 @@ app.layout = html.Div([
         options=[
             {'label': 'Breadthfirst', 'value': 'breadthfirst'},
             {'label': 'Circle', 'value': 'circle'},
-            {'label': 'Grid', 'value': 'grid'}
+            {'label': 'Grid', 'value': 'grid'},
+            {'label': 'Cose', 'value': 'cose'}
         ],
         value='breadthfirst',
         style={'width': '200px'}
@@ -52,7 +53,7 @@ app.layout = html.Div([
     html.Div(id='download-status'),
     cyto.Cytoscape(
         id='mindmap',
-        layout={'name': 'breadthfirst'},
+        layout={},  # Layout will be set by callback
         style={'width': '100%', 'height': '600px'},
         elements=[],
         stylesheet=[]
@@ -65,10 +66,9 @@ app.layout = html.Div([
     Output('mindmap', 'stylesheet'),
     Input('generate-button', 'n_clicks'),
     State('input-text', 'value'),
-    State('layout-style', 'value'),
     State('theme-store', 'data')
 )
-def update_mindmap(n_clicks, text, layout_style, theme):
+def update_mindmap(n_clicks, text, theme):
     if not text:
         return [], []
 
@@ -104,6 +104,14 @@ def update_mindmap(n_clicks, text, layout_style, theme):
     ]
 
     return elements, stylesheet
+
+
+@app.callback(
+    Output('mindmap', 'layout'),
+    Input('layout-style', 'value')
+)
+def update_layout(layout_value):
+    return {'name': layout_value}
 
 
 @app.callback(
