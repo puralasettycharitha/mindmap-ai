@@ -1,80 +1,90 @@
 import dash
-from dash import html, dcc, Input, Output, State
+from dash import dcc, html, Input, Output, State
 import dash_cytoscape as cyto
-import dash_daq as daq
+import networkx as nx
 import base64
-from PIL import Image
 import io
+from PIL import Image
+import dash_daq as daq
+
 from mindmap_generator import build_mindmap
 
-cyto.load_extra_layouts()
 app = dash.Dash(__name__)
 server = app.server
 
-# Theme state
-app.layout = html.Div([
-    daq.ToggleSwitch(id="theme-toggle", label=["🌞 Light", "🌚 Dark"], value=True),
-    html.H1("🧠 MindMap AI Generator", className="title"),
-    dcc.Input(id="user-input", type="text", placeholder="Enter a concept...", className="input-box"),
-    dcc.Dropdown(
-        id='layout-dropdown',
-        options=[
-            {'label': 'Breadthfirst', 'value': 'breadthfirst'},
-            {'label': 'Circle', 'value': 'circle'},
-            {'label': 'Grid', 'value': 'grid'},
-            {'label': 'Cose', 'value': 'cose'}
-        ],
-        value='breadthfirst',
-        className="dropdown"
-    ),
-    html.Div([
-        html.Button("Generate Map", id="generate-btn", className="btn"),
-        html.Button("Download PNG", id="download-btn", className="btn")
-    ], className="button-group"),
-    cyto.Cytoscape(
-        id='cytoscape',
-        layout={'name': 'breadthfirst'},
-        style={'width': '100%', 'height': '600px'},
-        elements=[]
-    ),
-    dcc.Download(id="download-image")
-], id="main-container", className="dark")  # default dark theme
+dark_theme = {
+    "background": "#111111",
+    "text": "#FFFFFF"
+}
+light_theme = {
+    "background": "#FFFFFF",
+    "text": "#000000"
+}
 
+app.layout = html.Div(
+    id="main-container",
+    style={"backgroundColor": dark_theme["background"], "color": dark_theme["text"], "minHeight": "100vh", "padding": "20px"},
+    children=[
+        daq.ToggleSwitch(id='theme-toggle', label=['🌙 Dark', '☀️ Light'], value=True),
 
-@app.callback(
-    Output('cytoscape', 'elements'),
-    Output('cytoscape', 'layout'),
-    Input('generate-btn', 'n_clicks'),
-    State('user-input', 'value'),
-    State('layout-dropdown', 'value'),
-    prevent_initial_call=True
+        html.H1("🧠 MindMap AI Generator", style={"textAlign": "center"}),
+
+        dcc.Input(id="input-text", type="text", placeholder="Enter your idea or topic...", style={"width": "100%", "padding": "10px"}),
+
+        html.Div([
+            dcc.Dropdown(
+                id="layout-dropdown",
+                options=[{"label": layout, "value": layout.lower()} for layout in ["Breadthfirst", "Circle", "Grid", "Cose"]],
+                value="breadthfirst",
+                style={"width": "200px", "marginTop": "10px"}
+            ),
+            html.Button("Generate Map", id="generate-button", n_clicks=0, style={"marginLeft": "10px"}),
+            html.Button("Download PNG", id="download-button", n_clicks=0, style={"marginLeft": "10px"}),
+        ], style={"display": "flex", "alignItems": "center", "marginTop": "10px"}),
+
+        html.Div(id="cytoscape-container", children=[
+            cyto.Cytoscape(
+                id="mindmap",
+                layout={"name": "breadthfirst"},
+                style={"width": "100%", "height": "600px"},
+                elements=[],
+                stylesheet=[
+                    {"selector": "node", "style": {"content": "data(label)", "text-valign": "center", "color": "#fff", "background-color": "#0074D9"}},
+                    {"selector": "edge", "style": {"line-color": "#ccc", "width": 2}},
+                ]
+            )
+        ])
+    ]
 )
-def generate_map(n_clicks, user_input, layout_style):
-    if not user_input:
-        return [], {'name': layout_style}
-    elements = build_mindmap(user_input)
-    return elements, {'name': layout_style}
 
 
 @app.callback(
-    Output("main-container", "className"),
+    Output("mindmap", "elements"),
+    Output("mindmap", "layout"),
+    Input("generate-button", "n_clicks"),
+    State("input-text", "value"),
+    State("layout-dropdown", "value")
+)
+def update_mindmap(n_clicks, input_text, layout_value):
+    if not input_text:
+        return [], {"name": layout_value}
+
+    G = build_mindmap(input_text)
+
+    nodes = [{"data": {"id": str(node), "label": str(node)}} for node in G.nodes()]
+    edges = [{"data": {"source": str(src), "target": str(dst)}} for src, dst in G.edges()]
+
+    return nodes + edges, {"name": layout_value}
+
+
+@app.callback(
+    Output("main-container", "style"),
     Input("theme-toggle", "value")
 )
-def toggle_theme(dark_mode):
-    return "dark" if dark_mode else "light"
+def toggle_theme(is_dark):
+    theme = dark_theme if is_dark else light_theme
+    return {"backgroundColor": theme["background"], "color": theme["text"], "minHeight": "100vh", "padding": "20px"}
 
 
-@app.callback(
-    Output("download-image", "data"),
-    Input("download-btn", "n_clicks"),
-    State("cytoscape", "elements"),
-    prevent_initial_call=True
-)
-def download_as_png(n_clicks, elements):
-    from dash_cytoscape.utils import to_image
-    image_bytes = to_image(elements, format="png")
-    return dcc.send_bytes(image_bytes, "mindmap.png")
-
-
-if __name__ == '__main__':
-    app.run_server(debug=False, host="0.0.0.0", port=8080)
+if __name__ == "__main__":
+    app.run_server(debug=True)
