@@ -1,104 +1,124 @@
-import os
+# app.py
 import dash
 from dash import html, dcc, Input, Output, State
 import dash_cytoscape as cyto
+import spacy
 import networkx as nx
+import dash_daq as daq
+import base64
+import io
+import plotly.io as pio
+from PIL import Image
+
 from mindmap_generator import build_mindmap
 
-# Initialize Dash
-app = dash.Dash(__name__)
-server = app.server  # for deployment (Render)
+# Load SpaCy model
+nlp = spacy.load("en_core_web_sm")
 
-# Layout
+app = dash.Dash(__name__)
+server = app.server
+
+app.title = "MindMap AI"
+
+# Initial theme
+theme_dark = {
+    'background': '#111111',
+    'text': '#FFFFFF',
+    'node_text': 'white'
+}
+theme_light = {
+    'background': '#FFFFFF',
+    'text': '#000000',
+    'node_text': 'black'
+}
+
 app.layout = html.Div([
     dcc.Store(id='theme-store', data='dark'),
-
-    # Theme toggle
     html.Button("🌙 Switch to Light Mode", id='theme-toggle', n_clicks=0),
-
-    html.Div(id='page-content', children=[
-        html.H1("🧠 MindMap AI Generator", id='title'),
-
-        dcc.Input(
-            id='input-text',
-            type='text',
-            placeholder='Enter a concept...',
-            style={'width': '80%', 'padding': '10px'}
-        ),
-        html.Button("Generate Map", id='generate-button', style={'margin': '10px'}),
-        html.Button("Download PNG", id='download-button'),
-
-        dcc.Dropdown(
-            id='layout-style',
-            options=[
-                {'label': 'Breadthfirst', 'value': 'breadthfirst'},
-                {'label': 'Circle', 'value': 'circle'},
-                {'label': 'Grid', 'value': 'grid'},
-                {'label': 'Cose', 'value': 'cose'}
-            ],
-            value='breadthfirst',
-            clearable=False,
-            style={'width': '200px', 'margin': '10px'}
-        ),
-
-        cyto.Cytoscape(
-            id='mindmap',
-            layout={'name': 'breadthfirst'},
-            style={'width': '100%', 'height': '600px'},
-            elements=[]
-        ),
-
-        html.Div(id='download-link')
-    ])
-], id='main-container', style={'backgroundColor': '#111', 'color': 'white', 'padding': '20px'})
+    html.H1("\U0001F9E0 MindMap AI Generator", id='title', style={'textAlign': 'center'}),
+    dcc.Input(id='input-text', type='text', placeholder='Enter your topic or idea', style={'width': '60%'}),
+    dcc.Dropdown(
+        id='layout-style',
+        options=[
+            {'label': 'Breadthfirst', 'value': 'breadthfirst'},
+            {'label': 'Circle', 'value': 'circle'},
+            {'label': 'Grid', 'value': 'grid'}
+        ],
+        value='breadthfirst',
+        style={'width': '200px'}
+    ),
+    html.Button('Generate Map', id='generate-button'),
+    html.Button('Download PNG', id='download-button'),
+    html.Div(id='download-status'),
+    cyto.Cytoscape(
+        id='mindmap',
+        layout={'name': 'breadthfirst'},
+        style={'width': '100%', 'height': '600px'},
+        elements=[],
+        stylesheet=[]
+    )
+], id='main-div')
 
 
-# 🔄 Theme Toggle Callback
-@app.callback(
-    Output('main-container', 'style'),
-    Output('title', 'style'),
-    Output('theme-toggle', 'children'),
-    Input('theme-toggle', 'n_clicks')
-)
-def toggle_theme(n_clicks):
-    if n_clicks % 2 == 0:
-        return (
-            {'backgroundColor': '#111', 'color': 'white', 'padding': '20px'},
-            {'color': 'white'},
-            '🌙 Switch to Light Mode'
-        )
-    else:
-        return (
-            {'backgroundColor': '#fff', 'color': 'black', 'padding': '20px'},
-            {'color': 'black'},
-            '☀️ Switch to Dark Mode'
-        )
-
-
-# 🧠 Mind Map Generator
 @app.callback(
     Output('mindmap', 'elements'),
+    Output('mindmap', 'stylesheet'),
     Input('generate-button', 'n_clicks'),
     State('input-text', 'value'),
-    prevent_initial_call=True
+    State('layout-style', 'value'),
+    State('theme-store', 'data')
 )
-def generate_mindmap(n_clicks, input_text):
-    G = build_mindmap(input_text)
-    nodes = [{'data': {'id': n, 'label': n}} for n in G.nodes()]
-    edges = [{'data': {'source': u, 'target': v}} for u, v in G.edges()]
-    return nodes + edges
+def update_mindmap(n_clicks, text, layout_style, theme):
+    if not text:
+        return [], []
+
+    G = build_mindmap(text)
+
+    elements = []
+    for node in G.nodes:
+        elements.append({"data": {"id": node, "label": node}})
+    for source, target in G.edges:
+        elements.append({"data": {"source": source, "target": target}})
+
+    node_text_color = theme_dark['node_text'] if theme == 'dark' else theme_light['node_text']
+
+    stylesheet = [
+        {
+            'selector': 'node',
+            'style': {
+                'label': 'data(label)',
+                'color': node_text_color,
+                'background-color': '#0074D9',
+                'text-outline-color': '#0074D9',
+                'text-outline-width': 2,
+                'font-size': 16
+            }
+        },
+        {
+            'selector': 'edge',
+            'style': {
+                'line-color': 'gray',
+                'width': 2
+            }
+        }
+    ]
+
+    return elements, stylesheet
 
 
-# 🔄 Layout Update Callback
 @app.callback(
-    Output('mindmap', 'layout'),
-    Input('layout-style', 'value')
+    Output('main-div', 'style'),
+    Output('title', 'style'),
+    Output('theme-store', 'data'),
+    Output('theme-toggle', 'children'),
+    Input('theme-toggle', 'n_clicks'),
+    State('theme-store', 'data')
 )
-def update_layout(layout_name):
-    return {'name': layout_name}
+def toggle_theme(n_clicks, current):
+    if n_clicks % 2 == 0:
+        return theme_dark, {'color': theme_dark['text'], 'textAlign': 'center'}, 'dark', '🌙 Switch to Light Mode'
+    else:
+        return theme_light, {'color': theme_light['text'], 'textAlign': 'center'}, 'light', '☀️ Switch to Dark Mode'
 
-
-# ✅ Run Server
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8050))
-    app.run(debug=False, host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=8050)
