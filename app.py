@@ -3,6 +3,7 @@ from dash import dcc, html, Input, Output, State
 import dash_cytoscape as cyto
 import openai
 import networkx as nx
+import os
 
 # 🔐 Set your OpenAI API key
 openai.api_key = "sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"  # Replace with your key
@@ -149,4 +150,5 @@ def download_png(n_clicks):
 
 # 🚀 Run app
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 8050))
+    app.run(host="0.0.0.0", port=port)
