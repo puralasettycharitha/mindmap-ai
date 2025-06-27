@@ -3,7 +3,7 @@ import subprocess
 import sys
 import networkx as nx
 
-# Ensure spaCy model is available
+# Load model or download if missing
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
